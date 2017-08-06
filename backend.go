@@ -46,9 +46,9 @@ type Backend interface {
 	QueueOffline(client *Client) error
 
 	// AuthorizeSubscribe is called before the clients subscribe to the specified
- 	// topic and return true if the client is authorized for the topic or false
- 	// if the client is unauthorized.
- 	AuthorizeSubscribe(client *Client, topic string, qos int) (bool, error)
+	// topic and return true if the client is authorized for the topic or false
+	// if the client is unauthorized.
+	AuthorizeSubscribe(client *Client, topic string, qos int) (bool, error)
 
 	// Subscribe should subscribe the passed client to the specified topic and
 	// call Publish with any incoming messages.
@@ -68,10 +68,10 @@ type Backend interface {
 	QueueRetained(client *Client, topic string) error
 
 	// AuthorizePublish is called before the clients publish with specified
- 	// message and return true if the client is authorized to publish or false
- 	// if the client is unauthorized.
+	// message and return true if the client is authorized to publish or false
+	// if the client is unauthorized.
 	AuthorizePublish(client *Client, msg *packet.Message) (bool, error)
- 
+
 	// Publish should forward the passed message to all other clients that hold
 	// a subscription that matches the messages topic. It should also add the
 	// message to all sessions that have a matching offline subscription.
@@ -89,9 +89,9 @@ type Backend interface {
 
 // A MemoryBackend stores everything in memory.
 type MemoryBackend struct {
-	Logins map[string]string
+	AuthenticateCB       func(c *Client, user string, password string) (bool, error)
 	AuthorizeSubscribeCB func(c *Client, topic string, qos int) (bool, error)
- 	AuthorizePublishCB   func(c *Client, msg *packet.Message) (bool, error)
+	AuthorizePublishCB   func(c *Client, msg *packet.Message) (bool, error)
 
 	queue        *tools.Tree
 	retained     *tools.Tree
@@ -114,20 +114,12 @@ func NewMemoryBackend() *MemoryBackend {
 	}
 }
 
-// Authenticate authenticates a clients credentials by matching them to the
-// saved Logins map.
+// Authenticate authenticates a clients credentials by calling AuthenticateCB
 func (m *MemoryBackend) Authenticate(client *Client, user, password string) (bool, error) {
-	// allow all if there are no logins
-	if m.Logins == nil {
+	if m.AuthenticateCB == nil {
 		return true, nil
 	}
-
-	// check login
-	if pw, ok := m.Logins[user]; ok && pw == password {
-		return true, nil
-	}
-
-	return false, nil
+	return m.AuthenticateCB(client, user, password)
 }
 
 // Setup returns the already stored session for the supplied id or creates and
@@ -205,12 +197,13 @@ func (m *MemoryBackend) QueueOffline(client *Client) error {
 	return nil
 }
 
+// AuthorizeSubscribe will call AuthorizeSubscribeCB to autorize client with username and password
 func (m *MemoryBackend) AuthorizeSubscribe(client *Client, topic string, qos int) (bool, error) {
 	if m.AuthorizeSubscribeCB == nil {
- 		return true, nil
- 	}
- 	return m.AuthorizeSubscribeCB(client, topic, qos)
- }
+		return true, nil
+	}
+	return m.AuthorizeSubscribeCB(client, topic, qos)
+}
 
 // Subscribe will subscribe the passed client to the specified topic and
 // begin to forward messages by calling the clients Publish method.

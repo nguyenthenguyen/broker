@@ -35,9 +35,9 @@ var (
 	// ErrExpectedConnect is returned when the first received packet is not a
 	// ConnectPacket.
 	ErrExpectedConnect = errors.New("expected a ConnectPacket as the first packet")
-	ErrNotAuthorizedPublish   = errors.New("client published to an unauthorized topic")
+	// ErrNotAuthorizedPublish is returned when client do not have publish permission on topic
+	ErrNotAuthorizedPublish = errors.New("client published to an unauthorized topic")
 )
-
 
 // A Client represents a remote client that is connected to the broker.
 type Client struct {
@@ -393,14 +393,14 @@ func (c *Client) processUnsubscribe(pkt *packet.UnsubscribePacket) error {
 // handle an incoming PublishPacket
 func (c *Client) processPublish(publish *packet.PublishPacket) error {
 	// authorize publish
- 	ok, err := c.engine.Backend.AuthorizePublish(c, &publish.Message)
- 	if err != nil {
- 		return c.die(BackendError, err, true)
- 	}
- 	if !ok {
- 		return c.die(ClientError, ErrNotAuthorizedPublish, true)
- 	}
-	
+	ok, err := c.engine.Backend.AuthorizePublish(c, &publish.Message)
+	if err != nil {
+		return c.die(BackendError, err, true)
+	}
+	if !ok {
+		return c.die(ClientError, ErrNotAuthorizedPublish, true)
+	}
+
 	if publish.Message.QOS == 1 {
 		puback := packet.NewPubackPacket()
 		puback.PacketID = publish.PacketID
