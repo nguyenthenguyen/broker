@@ -31,9 +31,13 @@ const (
 	clientDisconnected
 )
 
-// ErrExpectedConnect is returned when the first received packet is not a
-// ConnectPacket.
-var ErrExpectedConnect = errors.New("expected a ConnectPacket as the first packet")
+var (
+	// ErrExpectedConnect is returned when the first received packet is not a
+	// ConnectPacket.
+	ErrExpectedConnect = errors.New("expected a ConnectPacket as the first packet")
+	ErrNotAuthorizedPublish   = errors.New("client published to an unauthorized topic")
+)
+
 
 // A Client represents a remote client that is connected to the broker.
 type Client struct {
@@ -316,8 +320,18 @@ func (c *Client) processSubscribe(pkt *packet.SubscribePacket) error {
 
 	// handle contained subscriptions
 	for i, subscription := range pkt.Subscriptions {
+		// authorize subscription
+		ok, err := c.engine.Backend.AuthorizeSubscribe(c, subscription.Topic, int(subscription.QOS))
+		if err != nil {
+			return c.die(BackendError, err, true)
+		}
+		if !ok {
+			suback.ReturnCodes[i] = packet.QOSFailure
+			continue
+		}
+
 		// save subscription in session
-		err := c.session.SaveSubscription(&subscription)
+		err = c.session.SaveSubscription(&subscription)
 		if err != nil {
 			return c.die(SessionError, err, true)
 		}
@@ -378,6 +392,15 @@ func (c *Client) processUnsubscribe(pkt *packet.UnsubscribePacket) error {
 
 // handle an incoming PublishPacket
 func (c *Client) processPublish(publish *packet.PublishPacket) error {
+	// authorize publish
+ 	ok, err := c.engine.Backend.AuthorizePublish(c, &publish.Message)
+ 	if err != nil {
+ 		return c.die(BackendError, err, true)
+ 	}
+ 	if !ok {
+ 		return c.die(ClientError, ErrNotAuthorizedPublish, true)
+ 	}
+	
 	if publish.Message.QOS == 1 {
 		puback := packet.NewPubackPacket()
 		puback.PacketID = publish.PacketID

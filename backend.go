@@ -45,6 +45,11 @@ type Backend interface {
 	// forwards all missed messages.
 	QueueOffline(client *Client) error
 
+	// AuthorizeSubscribe is called before the clients subscribe to the specified
+ 	// topic and return true if the client is authorized for the topic or false
+ 	// if the client is unauthorized.
+ 	AuthorizeSubscribe(client *Client, topic string, qos int) (bool, error)
+
 	// Subscribe should subscribe the passed client to the specified topic and
 	// call Publish with any incoming messages.
 	Subscribe(client *Client, topic string) error
@@ -62,6 +67,11 @@ type Backend interface {
 	// used to trigger a background process that forwards all retained messages.
 	QueueRetained(client *Client, topic string) error
 
+	// AuthorizePublish is called before the clients publish with specified
+ 	// message and return true if the client is authorized to publish or false
+ 	// if the client is unauthorized.
+	AuthorizePublish(client *Client, msg *packet.Message) (bool, error)
+ 
 	// Publish should forward the passed message to all other clients that hold
 	// a subscription that matches the messages topic. It should also add the
 	// message to all sessions that have a matching offline subscription.
@@ -80,6 +90,8 @@ type Backend interface {
 // A MemoryBackend stores everything in memory.
 type MemoryBackend struct {
 	Logins map[string]string
+	AuthorizeSubscribeCB func(c *Client, topic string, qos int) (bool, error)
+ 	AuthorizePublishCB   func(c *Client, msg *packet.Message) (bool, error)
 
 	queue        *tools.Tree
 	retained     *tools.Tree
@@ -193,6 +205,13 @@ func (m *MemoryBackend) QueueOffline(client *Client) error {
 	return nil
 }
 
+func (m *MemoryBackend) AuthorizeSubscribe(client *Client, topic string, qos int) (bool, error) {
+	if m.AuthorizeSubscribeCB == nil {
+ 		return true, nil
+ 	}
+ 	return m.AuthorizeSubscribeCB(client, topic, qos)
+ }
+
 // Subscribe will subscribe the passed client to the specified topic and
 // begin to forward messages by calling the clients Publish method.
 func (m *MemoryBackend) Subscribe(client *Client, topic string) error {
@@ -237,6 +256,13 @@ func (m *MemoryBackend) QueueRetained(client *Client, topic string) error {
 	}
 
 	return nil
+}
+
+func (m *MemoryBackend) AuthorizePublish(client *Client, msg *packet.Message) (bool, error) {
+	if m.AuthorizePublishCB == nil {
+		return true, nil
+	}
+	return m.AuthorizePublishCB(client, msg)
 }
 
 // Publish will forward the passed message to all other subscribed clients. It
